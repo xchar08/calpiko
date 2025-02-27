@@ -1,5 +1,7 @@
-/** @type {import('tailwindcss').Config} */
-module.exports = {
+// tailwind.config.ts
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
   darkMode: 'class',
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
@@ -8,9 +10,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'obsidian-bg': '#282a36',       // Dark background
-        'obsidian-fg': '#f8f8f2',       // Light text
-        'obsidian-border': '#44475a'    // Border for editor box
+        'obsidian-bg': '#282a36',
+        'obsidian-fg': '#f8f8f2',
+        'obsidian-border': '#44475a'
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif']
@@ -19,3 +21,5 @@ module.exports = {
   },
   plugins: []
 }
+
+export default config

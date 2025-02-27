@@ -6,6 +6,7 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { supabase } from '../lib/supabaseClient'
+import MarkdownRenderer from './MarkdownRenderer'
 
 interface DocumentEditorProps {
   docId: string | string[] | undefined
@@ -25,6 +26,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
   const [username] = useState('User' + Math.floor(Math.random() * 1000))
   const [userColor] = useState('#' + Math.floor(Math.random() * 16777215).toString(16))
   const [saveStatus, setSaveStatus] = useState<string>('')
+  const [showPreview, setShowPreview] = useState<boolean>(false)
 
   const editor = useEditor({
     extensions: [
@@ -35,11 +37,11 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
         user: { name: username, color: userColor },
       }),
     ],
-    content: '', // Start empty; we load from Supabase below.
+    content: '', // Content will be loaded from Supabase.
     immediatelyRender: false,
   })
 
-  // Load saved document content from Supabase.
+  // Load saved document from Supabase.
   useEffect(() => {
     async function loadDocument() {
       if (!docId || typeof docId !== 'string') return
@@ -47,8 +49,10 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
         .from('documents')
         .select('content')
         .eq('id', docId)
-        .single()
-      if (error) console.error('Error loading document:', error)
+        .maybeSingle()
+      if (error) {
+        console.error('Error loading document:', error)
+      }
       const initialContent = data?.content || '## Welcome to your Document!\n\nStart editing...'
       const yText = ydoc.getText('prosemirror')
       if (yText.length === 0) {
@@ -65,14 +69,14 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     }
   }, [editor])
 
-  // Debounce live save: auto-save 3 seconds after the last update.
+  // Debounce live-save: auto-save 3 seconds after last update.
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const saveDocument = async () => {
     if (!editor || !docId || typeof docId !== 'string') return
-    const content = editor.getHTML()
+    const newContent = editor.getHTML()
     const { error } = await supabase
       .from('documents')
-      .upsert({ id: docId, content }, { onConflict: 'id' })
+      .upsert({ id: docId, content: newContent }, { onConflict: 'id' })
     if (error) {
       setSaveStatus('Error saving document.')
       console.error(error)
@@ -96,16 +100,6 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     }
   }, [editor])
 
-  // Toggle dark mode: This button now has a bright background to be clearly visible.
-  const toggleDarkMode = () => {
-    const root = document.documentElement
-    if (root.classList.contains('dark')) {
-      root.classList.remove('dark')
-    } else {
-      root.classList.add('dark')
-    }
-  }
-
   return (
     <div className="min-h-screen bg-obsidian-bg text-obsidian-fg">
       <div className="container mx-auto p-6 font-sans">
@@ -113,10 +107,10 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
           <h1 className="text-2xl font-bold">Calpiko Editor</h1>
           <div className="space-x-2">
             <button
-              onClick={toggleDarkMode}
-              className="px-4 py-2 bg-yellow-500 text-black rounded shadow"
+              onClick={() => setShowPreview((prev) => !prev)}
+              className="px-4 py-2 bg-blue-600 text-white rounded shadow"
             >
-              Toggle Light/Dark Mode
+              {showPreview ? 'Hide Preview' : 'Show Preview'}
             </button>
             <button
               onClick={saveDocument}
@@ -130,6 +124,12 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
         <div className="border border-obsidian-border bg-[#44475a] p-4 min-h-[400px] rounded">
           <EditorContent editor={editor} />
         </div>
+        {showPreview && (
+          <div className="mt-6 border border-obsidian-border bg-[#44475a] p-4 rounded">
+            <h2 className="text-xl font-bold mb-2">Preview</h2>
+            <MarkdownRenderer content={editor ? editor.getHTML() : ''} />
+          </div>
+        )}
       </div>
     </div>
   )

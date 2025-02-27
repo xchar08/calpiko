@@ -1,19 +1,14 @@
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/router'
 
-const DocumentEditor = dynamic(() => import('../../components/DocumentEditor'), {
+// Dynamically import the collaborative plain-text editor (to disable SSR).
+const DocumentEditorPlain = dynamic(() => import('../../components/DocumentEditorPlain'), {
   ssr: false,
 })
 
-const DocPage = () => {
+export default function DocPage() {
   const router = useRouter()
   const { docId } = router.query
 
-  return (
-    <div>
-      <DocumentEditor docId={docId} />
-    </div>
-  )
+  return <DocumentEditorPlain docId={docId} />
 }
-
-export default DocPage
