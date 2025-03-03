@@ -1,138 +1,138 @@
-import { FC, useState, useEffect, useRef } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
-import * as Y from 'yjs'
-import { WebsocketProvider } from 'y-websocket'
-import { supabase } from '../lib/supabaseClient'
-import MarkdownRenderer from './MarkdownRenderer'
+// components/DocumentEditor.tsx
+import React, { FC, useState, useEffect, useRef } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { supabase } from '../lib/supabaseClient';
+import MarkdownRenderer from './MarkdownRenderer';
+import { Container, Box, Typography, Button, Grid } from '@mui/material';
 
 interface DocumentEditorProps {
-  docId: string | string[] | undefined
+  docId: string | string[] | undefined;
 }
 
 const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
-  // Create a new Yjs document.
-  const ydoc = new Y.Doc()
-
-  // Connect to the Yjs WebSocket server.
+  const ydoc = new Y.Doc();
   const provider = new WebsocketProvider(
     'ws://localhost:1234',
     typeof docId === 'string' ? docId : 'default-room',
     ydoc
-  )
+  );
 
-  const [username] = useState('User' + Math.floor(Math.random() * 1000))
-  const [userColor] = useState('#' + Math.floor(Math.random() * 16777215).toString(16))
-  const [saveStatus, setSaveStatus] = useState<string>('')
-  const [showPreview, setShowPreview] = useState<boolean>(false)
+  const [username] = useState('User' + Math.floor(Math.random() * 1000));
+  const [userColor] = useState('#' + Math.floor(Math.random() * 16777215).toString(16));
+  const [saveStatus, setSaveStatus] = useState<string>('');
+  const [showPreview, setShowPreview] = useState<boolean>(false);
 
   const editor = useEditor({
     extensions: [
       StarterKit,
       Collaboration.configure({ document: ydoc }),
-      CollaborationCursor.configure({
-        provider,
-        user: { name: username, color: userColor },
-      }),
+      CollaborationCursor.configure({ provider, user: { name: username, color: userColor } }),
     ],
-    content: '', // Content will be loaded from Supabase.
-    immediatelyRender: false,
-  })
+    content: '',
+    autoFocus: true,
+  });
 
-  // Load saved document from Supabase.
   useEffect(() => {
     async function loadDocument() {
-      if (!docId || typeof docId !== 'string') return
+      if (!docId || typeof docId !== 'string') return;
       const { data, error } = await supabase
         .from('documents')
         .select('content')
         .eq('id', docId)
-        .maybeSingle()
-      if (error) {
-        console.error('Error loading document:', error)
-      }
-      const initialContent = data?.content || '## Welcome to your Document!\n\nStart editing...'
-      const yText = ydoc.getText('prosemirror')
-      if (yText.length === 0) {
-        yText.insert(0, initialContent)
-      }
+        .maybeSingle();
+      if (error) console.error('Error loading document:', error);
+      const initialContent = data?.content || '## Welcome to your Document!\n\nStart editing...';
+      const yText = ydoc.getText('prosemirror');
+      if (yText.length === 0) yText.insert(0, initialContent);
     }
-    loadDocument()
-  }, [docId, ydoc])
+    loadDocument();
+  }, [docId, ydoc]);
 
-  // Auto-focus the editor on mount.
-  useEffect(() => {
-    if (editor) {
-      editor.commands.focus()
-    }
-  }, [editor])
-
-  // Debounce live-save: auto-save 3 seconds after last update.
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const saveDocument = async () => {
-    if (!editor || !docId || typeof docId !== 'string') return
-    const newContent = editor.getHTML()
+    if (!editor || !docId || typeof docId !== 'string') return;
+    const newContent = editor.getHTML();
     const { error } = await supabase
       .from('documents')
-      .upsert({ id: docId, content: newContent }, { onConflict: 'id' })
+      .upsert({ id: docId, content: newContent }, { onConflict: 'id' });
     if (error) {
-      setSaveStatus('Error saving document.')
-      console.error(error)
+      setSaveStatus('Error saving document.');
+      console.error(error);
     } else {
-      setSaveStatus('Document saved!')
-      setTimeout(() => setSaveStatus(''), 2000)
+      setSaveStatus('Document saved!');
+      setTimeout(() => setSaveStatus(''), 2000);
     }
-  }
+  };
+
   const debouncedSave = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      saveDocument()
-    }, 3000)
-  }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => saveDocument(), 3000);
+  };
+
   useEffect(() => {
-    if (!editor) return
-    editor.on('update', debouncedSave)
+    if (!editor) return;
+    editor.on('update', debouncedSave);
     return () => {
-      editor.off('update', debouncedSave)
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [editor])
+      editor.off('update', debouncedSave);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [editor]);
 
   return (
-    <div className="min-h-screen bg-obsidian-bg text-obsidian-fg">
-      <div className="container mx-auto p-6 font-sans">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold">Calpiko Editor</h1>
-          <div className="space-x-2">
-            <button
-              onClick={() => setShowPreview((prev) => !prev)}
-              className="px-4 py-2 bg-blue-600 text-white rounded shadow"
-            >
-              {showPreview ? 'Hide Preview' : 'Show Preview'}
-            </button>
-            <button
-              onClick={saveDocument}
-              className="px-4 py-2 bg-green-600 text-white rounded shadow"
-            >
-              Save Now
-            </button>
-          </div>
-        </div>
-        {saveStatus && <p className="mb-2 text-sm">{saveStatus}</p>}
-        <div className="border border-obsidian-border bg-[#44475a] p-4 min-h-[400px] rounded">
-          <EditorContent editor={editor} />
-        </div>
+    <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#282a36', color: '#f8f8f2', minHeight: '100vh' }}>
+      <Grid container spacing={4}>
+        <Grid item xs={12}>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h4">Calpiko Editor</Typography>
+            <Box>
+              <Button variant="contained" color="primary" onClick={() => setShowPreview(!showPreview)} sx={{ mr: 2 }}>
+                {showPreview ? 'Hide Preview' : 'Show Preview'}
+              </Button>
+              <Button variant="contained" color="success" onClick={saveDocument}>
+                Save Now
+              </Button>
+            </Box>
+          </Box>
+          {saveStatus && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              {saveStatus}
+            </Typography>
+          )}
+        </Grid>
+        <Grid item xs={12}>
+          <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1, minHeight: 400 }}>
+            <EditorContent editor={editor} />
+          </Box>
+        </Grid>
         {showPreview && (
-          <div className="mt-6 border border-obsidian-border bg-[#44475a] p-4 rounded">
-            <h2 className="text-xl font-bold mb-2">Preview</h2>
-            <MarkdownRenderer content={editor ? editor.getHTML() : ''} />
-          </div>
+          <Grid item xs={12}>
+            <Typography variant="h5" gutterBottom>
+              Preview
+            </Typography>
+            <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1 }}>
+              <Box 
+                className="markdown-content"
+                sx={{
+                  '& h1': { fontSize: '2.5rem', fontWeight: 'bold', my: 2 },
+                  '& h2': { fontSize: '2rem', fontWeight: 'bold', my: 2 },
+                  '& h3': { fontSize: '1.75rem', fontWeight: 'bold', my: 1.5 },
+                  '& p': { fontSize: '1rem', my: 1 },
+                  '& *': { fontFamily: 'inherit', color: 'inherit' },
+                }}
+              >
+                <MarkdownRenderer content={editor ? editor.getHTML() : ''} />
+              </Box>
+            </Box>
+          </Grid>
         )}
-      </div>
-    </div>
-  )
-}
+      </Grid>
+    </Container>
+  );
+};
 
-export default DocumentEditor
+export default DocumentEditor;

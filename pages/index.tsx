@@ -1,66 +1,78 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { v4 as uuidv4 } from 'uuid'
-import { useRouter } from 'next/router'
-import Link from 'next/link'
+// pages/index.tsx
+import { Button, Container, Typography, Box } from '@mui/material';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../lib/supabaseClient';
 
 interface DocumentRow {
-  id: string
-  title?: string
+  id: string;
+  title?: string;
 }
 
 export default function Home() {
-  const router = useRouter()
-  const [documents, setDocuments] = useState<DocumentRow[]>([])
-  const [loading, setLoading] = useState<boolean>(true)
+  const router = useRouter();
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const fetchDocuments = async () => {
+    async function fetchDocuments() {
       const { data, error } = await supabase
         .from<DocumentRow>('documents')
-        .select('id, title')
+        .select('id, title');
       if (error) {
-        console.error('Error fetching documents:', error)
+        console.error('Error fetching documents:', error);
       } else {
-        setDocuments(data || [])
+        setDocuments(data || []);
       }
-      setLoading(false)
+      setLoading(false);
     }
-    fetchDocuments()
-  }, [])
+    fetchDocuments();
+  }, []);
 
   const createDocument = () => {
-    const newDocId = uuidv4()
-    router.push(`/doc/${newDocId}?token=edit123`)
-  }
+    const newDocId = uuidv4();
+    router.push(`/doc/${newDocId}?token=edit123`);
+  };
 
   return (
-    <div className="min-h-screen bg-obsidian-bg text-obsidian-fg p-6">
-      <div className="bg-blue-600 p-4 text-white">
-        This div should have a blue background.
-      </div>
-      <h1 className="text-4xl mb-6 font-bold">Calpiko Dashboard</h1>
-      <button
-        onClick={createDocument}
-        className="px-6 py-3 bg-blue-600 text-white rounded shadow mb-8"
-      >
+    <Container maxWidth="md" sx={{ pt: 4 }}>
+      <Box sx={{ backgroundColor: 'primary.main', p: 2, mb: 3, borderRadius: 1 }}>
+        <Typography variant="h4" color="white">
+          Calpiko Dashboard
+        </Typography>
+      </Box>
+      <Button variant="contained" color="primary" onClick={createDocument} sx={{ mb: 3 }}>
         Create New Document
-      </button>
+      </Button>
       {loading ? (
-        <p>Loading...</p>
+        <Typography>Loading...</Typography>
       ) : documents.length === 0 ? (
-        <p>No documents found.</p>
+        <Typography>No documents found.</Typography>
       ) : (
-        <ul className="space-y-3">
+        <Box component="ul" sx={{ listStyle: 'none', pl: 0 }}>
           {documents.map((doc) => (
-            <li key={doc.id} className="border border-obsidian-border p-3 rounded">
-              <Link href={`/doc/${doc.id}?token=edit123`} className="hover:underline">
-                {doc.title || doc.id}
-              </Link>
-            </li>
+            <Box
+              component="li"
+              key={doc.id}
+              sx={{
+                border: 1,
+                borderColor: 'primary.main',
+                p: 2,
+                borderRadius: 1,
+                mb: 1,
+              }}
+            >
+              <a
+                href={`/doc/${doc.id}?token=edit123`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <Typography>{doc.title || doc.id}</Typography>
+              </a>
+            </Box>
           ))}
-        </ul>
+        </Box>
       )}
-    </div>
-  )
+    </Container>
+  );
 }

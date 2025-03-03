@@ -1,19 +1,22 @@
 // components/Layout.tsx
-import { FC, ReactNode } from 'react'
+import React, { FC, ReactNode } from 'react';
+import { Box, Container, Typography } from '@mui/material';
 
 interface LayoutProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
 const Layout: FC<LayoutProps> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-obsidian-bg text-obsidian-fg">
-      <header className="p-4 border-b border-obsidian-border">
-        <h1 className="text-3xl font-bold">Calpiko</h1>
-      </header>
-      <main className="p-6">{children}</main>
-    </div>
-  )
-}
+    <Box sx={{ minHeight: '100vh', backgroundColor: '#282a36', color: '#f8f8f2' }}>
+      <Box sx={{ p: 2, borderBottom: '1px solid #6272a4' }}>
+        <Typography variant="h3">Calpiko</Typography>
+      </Box>
+      <Container sx={{ py: 4 }}>
+        {children}
+      </Container>
+    </Box>
+  );
+};
 
-export default Layout
+export default Layout;
