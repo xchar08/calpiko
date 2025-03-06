@@ -1,6 +1,14 @@
-# Dockerfile for y-websocket server
+# Use an official lightweight Node.js image.
 FROM node:16-alpine
+
+# Set working directory.
 WORKDIR /app
-RUN npm install -g y-websocket-server
+
+# Install y-websocket locally (it will be used via npx).
+RUN npm install y-websocket
+
+# Expose port 8080.
 EXPOSE 8080
-CMD ["y-websocket-server", "--port", "8080"]
+
+# Start the WebSocket server using npx.
+CMD ["npx", "y-websocket", "--port", "8080"]
