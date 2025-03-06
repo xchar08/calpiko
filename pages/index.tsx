@@ -19,8 +19,8 @@ export default function Home() {
   useEffect(() => {
     const fetchDocuments = async () => {
       const { data, error } = await supabase
-        .from<DocumentRow>('documents')
-        .select('id, title');
+      .from('documents')
+      .select('id, title');
       if (error) console.error('Error fetching documents:', error);
       else setDocuments(data || []);
       setLoading(false);
