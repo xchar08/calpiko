@@ -49,7 +49,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
       }),
     ],
     content: '',
-    autoFocus: true,
+    autofocus: true,
   });
 
   // Presence tracking via Yjs awareness.

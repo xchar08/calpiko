@@ -33,6 +33,7 @@
     "yjs": "^13.6.23"
   },
   "devDependencies": {
+    "eslint": "^9.21.0",
     "typescript": "latest"
   }
 }
