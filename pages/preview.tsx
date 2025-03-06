@@ -1,7 +1,7 @@
 // pages/preview.tsx
 import React from 'react';
 import { Container, Box, Typography } from '@mui/material';
-import MarkdownRenderer from '../components/MarkdownRenderer';
+import MarkdownRenderer from '../components/markdown/MarkdownRenderer';
 
 export default function PreviewPage() {
   const sampleMarkdown = `
@@ -17,9 +17,7 @@ $$
 
   return (
     <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#282a36', color: '#f8f8f2', minHeight: '100vh' }}>
-      <Typography variant="h3" gutterBottom>
-        Preview Page
-      </Typography>
+      <Typography variant="h3" gutterBottom>Preview Page</Typography>
       <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1 }}>
         <Box
           className="markdown-content"

@@ -1,9 +1,10 @@
 // pages/index.tsx
-import { Button, Container, Typography, Box } from '@mui/material';
-import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { supabase } from '../config/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../lib/supabaseClient';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+import { Container, Button, Typography, Box, List, ListItem, ListItemText } from '@mui/material';
 
 interface DocumentRow {
   id: string;
@@ -16,17 +17,14 @@ export default function Home() {
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    async function fetchDocuments() {
+    const fetchDocuments = async () => {
       const { data, error } = await supabase
         .from<DocumentRow>('documents')
         .select('id, title');
-      if (error) {
-        console.error('Error fetching documents:', error);
-      } else {
-        setDocuments(data || []);
-      }
+      if (error) console.error('Error fetching documents:', error);
+      else setDocuments(data || []);
       setLoading(false);
-    }
+    };
     fetchDocuments();
   }, []);
 
@@ -36,13 +34,12 @@ export default function Home() {
   };
 
   return (
-    <Container maxWidth="md" sx={{ pt: 4 }}>
-      <Box sx={{ backgroundColor: 'primary.main', p: 2, mb: 3, borderRadius: 1 }}>
-        <Typography variant="h4" color="white">
-          Calpiko Dashboard
-        </Typography>
+    <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#282a36', color: '#f8f8f2', minHeight: '100vh' }}>
+      <Box sx={{ backgroundColor: 'blue', p: 2, color: 'white', mb: 3 }}>
+        <Typography variant="h5">Calpiko Dashboard</Typography>
       </Box>
-      <Button variant="contained" color="primary" onClick={createDocument} sx={{ mb: 3 }}>
+      <Typography variant="h3" gutterBottom>Dashboard</Typography>
+      <Button variant="contained" onClick={createDocument} sx={{ mb: 3 }}>
         Create New Document
       </Button>
       {loading ? (
@@ -50,28 +47,17 @@ export default function Home() {
       ) : documents.length === 0 ? (
         <Typography>No documents found.</Typography>
       ) : (
-        <Box component="ul" sx={{ listStyle: 'none', pl: 0 }}>
+        <List>
           {documents.map((doc) => (
-            <Box
-              component="li"
-              key={doc.id}
-              sx={{
-                border: 1,
-                borderColor: 'primary.main',
-                p: 2,
-                borderRadius: 1,
-                mb: 1,
-              }}
-            >
-              <a
-                href={`/doc/${doc.id}?token=edit123`}
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <Typography>{doc.title || doc.id}</Typography>
-              </a>
-            </Box>
+            <ListItem key={doc.id} sx={{ border: '1px solid #6272a4', mb: 1, borderRadius: 1 }}>
+              <ListItemText>
+                <Link href={`/doc/${doc.id}?token=edit123`} style={{ color: 'inherit', textDecoration: 'underline' }}>
+                  {doc.title || doc.id}
+                </Link>
+              </ListItemText>
+            </ListItem>
           ))}
-        </Box>
+        </List>
       )}
     </Container>
   );

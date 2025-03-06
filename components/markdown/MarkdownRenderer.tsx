@@ -1,5 +1,5 @@
-// components/MarkdownRenderer.tsx
-import React, { memo } from 'react';
+// components/markdown/MarkdownRenderer.tsx
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -12,14 +12,11 @@ interface MarkdownRendererProps {
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   return (
     <div>
-      <ReactMarkdown 
-        remarkPlugins={[remarkMath]} 
-        rehypePlugins={[rehypeKatex]}
-      >
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
         {content}
       </ReactMarkdown>
     </div>
   );
 };
 
-export default memo(MarkdownRenderer);
+export default React.memo(MarkdownRenderer);
