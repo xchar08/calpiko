@@ -10,18 +10,12 @@ import { supabase } from '../../config/supabaseClient';
 import { Container, Box, Typography, Button, Grid } from '@mui/material';
 import { auth } from '../../config/firebaseClient';
 
-// Define an interface for awareness user
-interface AwarenessUser {
-  email: string;
-  name: string;
-}
-
 interface DocumentEditorProps {
   docId: string | string[] | undefined;
 }
 
 const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
-  // Memoize the Yjs document so it is not recreated on every render.
+  // Memoize the Yjs document so it's not recreated on every render.
   const ydoc = useMemo(() => new Y.Doc(), []);
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:1234';
   const provider = useMemo(
@@ -29,9 +23,6 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     [wsUrl, docId, ydoc]
   );
 
-  const [username] = useState<string>(
-    'User' + Math.floor(Math.random() * 1000)
-  );
   const [userColor] = useState<string>(
     '#' + Math.floor(Math.random() * 16777215).toString(16)
   );
@@ -44,15 +35,17 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
       Collaboration.configure({ document: ydoc }),
       CollaborationCursor.configure({
         provider,
-        user: { name: auth.currentUser?.displayName || auth.currentUser?.email, color: userColor },
+        user: {
+          name: auth.currentUser?.displayName || auth.currentUser?.email,
+          color: userColor,
+        },
       }),
     ],
     content: '',
-    // use the correct "autofocus" (lowercase f)
-    autofocus: true,
+    autofocus: true, // Note: using lowercase "autofocus"
   });
 
-  // Load document from Supabase.
+  // Load document content from Supabase.
   useEffect(() => {
     async function loadDocument() {
       if (!docId || typeof docId !== 'string') return;
@@ -135,7 +128,6 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
           <Grid item xs={12}>
             <Typography variant="h5" gutterBottom>Preview</Typography>
             <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1 }}>
-              {/* Simple preview using dangerouslySetInnerHTML */}
               <div dangerouslySetInnerHTML={{ __html: editor ? editor.getHTML() : '' }} />
             </Box>
           </Grid>

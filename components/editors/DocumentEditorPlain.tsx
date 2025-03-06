@@ -1,5 +1,5 @@
 // components/editors/DocumentEditorPlain.tsx
-import { FC, useState, useEffect, useRef, ChangeEvent } from 'react';
+import { FC, useState, useEffect, useRef, ChangeEvent, useCallback } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { supabase } from '../../config/supabaseClient';
@@ -26,13 +26,21 @@ interface DocumentEditorPlainProps {
   docId: string | string[] | undefined;
 }
 
+// Define a type for Yjs awareness state
+interface AwarenessState {
+  user?: {
+    email?: string;
+    name?: string;
+  };
+}
+
 const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
   const ydoc = new Y.Doc();
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:1234';
   const provider = new WebsocketProvider(wsUrl, typeof docId === 'string' ? docId : 'default-room', ydoc);
   const yText = ydoc.getText('content');
 
-  // Presence tracking via Yjs awareness.
+  // Presence tracking using Yjs awareness.
   const [currentUsers, setCurrentUsers] = useState<string[]>([]);
   useEffect(() => {
     provider.awareness.setLocalStateField('user', {
@@ -40,9 +48,8 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
       name: auth.currentUser?.displayName || auth.currentUser?.email,
     });
     const onAwarenessChange = () => {
-      const states = Array.from(provider.awareness.getStates().values()).map((state: any) => state.user);
-      // Filter out duplicates and falsy values.
-      const uniqueEmails = Array.from(new Set(states.map(user => user?.email))).filter(email => email);
+      const states = Array.from(provider.awareness.getStates().values()) as AwarenessState[];
+      const uniqueEmails = Array.from(new Set(states.map(s => s.user?.email))).filter((email): email is string => !!email);
       setCurrentUsers(uniqueEmails);
     };
     provider.awareness.on('change', onAwarenessChange);
@@ -55,8 +62,8 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
   // Throttled markdown rendering.
   const [displayContent, setDisplayContent] = useState(content);
   const [lastRenderTime, setLastRenderTime] = useState(Date.now());
-  const renderThreshold = 100; // characters threshold
-  const renderInterval = 30000; // 30 seconds
+  const renderThreshold = 100;
+  const renderInterval = 30000;
 
   useEffect(() => {
     const now = Date.now();
@@ -83,16 +90,14 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
         .maybeSingle();
       if (error) console.error('Error loading document:', error);
       const initialContent = data?.content || '# Welcome\n\nStart editing...';
-      if (yText.length === 0) {
-        yText.insert(0, initialContent);
-      }
+      if (yText.length === 0) yText.insert(0, initialContent);
     }
     loadDocument();
   }, [docId, yText]);
 
   // Auto-save debounce.
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const saveDocument = async (newContent: string) => {
+  const saveDocument = useCallback(async (newContent: string) => {
     if (!docId || typeof docId !== 'string') return;
     const { error } = await supabase
       .from('documents')
@@ -104,11 +109,12 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
       setSaveStatus('Document saved!');
       setTimeout(() => setSaveStatus(''), 2000);
     }
-  };
-  const debouncedSave = (newContent: string) => {
+  }, [docId]);
+  
+  const debouncedSave = useCallback((newContent: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => saveDocument(newContent), 3000);
-  };
+  }, [saveDocument]);
 
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
@@ -121,7 +127,7 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
   const [accessList, setAccessList] = useState<string[]>([]);
-  const loadAccessList = async () => {
+  const loadAccessList = useCallback(async () => {
     if (!docId || typeof docId !== 'string') return;
     const docRef = doc(db, 'documentAccess', docId);
     const docSnap = await getDoc(docRef);
@@ -132,10 +138,11 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
       await setDoc(doc(db, 'documentAccess', docId), { users: [auth.currentUser?.email] });
       setAccessList([auth.currentUser?.email || '']);
     }
-  };
+  }, [docId]);
+  
   useEffect(() => {
     loadAccessList();
-  }, [docId]);
+  }, [docId, loadAccessList]);
 
   const handleShare = async () => {
     if (!docId || typeof docId !== 'string' || !shareEmail) return;
