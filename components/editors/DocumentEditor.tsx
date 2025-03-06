@@ -7,7 +7,23 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { supabase } from '../../config/supabaseClient';
-import { Container, Box, Typography, Button, Grid, FormControl, InputLabel, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
+import {
+  Container,
+  Box,
+  Typography,
+  Button,
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Stack,
+} from '@mui/material';
 import { auth, db } from '../../config/firebaseClient';
 import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
 import MarkdownRenderer from '../../components/markdown/MarkdownRenderer';
@@ -19,7 +35,23 @@ interface DocumentEditorProps {
 }
 
 const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
-  // Create a Yjs document once.
+  // -------------------------------
+  // State declarations
+  // -------------------------------
+  const [saveStatus, setSaveStatus] = useState<string>('');
+  const [accessList, setAccessList] = useState<Record<string, Permission>>({});
+  const [userPermission, setUserPermission] = useState<Permission>('none');
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharePermission, setSharePermission] = useState<Permission>('view');
+  const [transferDocName, setTransferDocName] = useState('');
+  const [transferConfirm, setTransferConfirm] = useState('');
+  const [currentUsers, setCurrentUsers] = useState<string[]>([]);
+  const [content, setContent] = useState<string>('');
+
+  // -------------------------------
+  // Yjs & WebSocket setup
+  // -------------------------------
   const ydoc = useMemo(() => new Y.Doc(), []);
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:1234';
   const provider = useMemo(
@@ -27,15 +59,10 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     [wsUrl, docId, ydoc]
   );
   const [userColor] = useState<string>('#' + Math.floor(Math.random() * 16777215).toString(16));
-  
-  // Save status is defined only once.
-  const [saveStatus, setSaveStatus] = useState<string>('');
-  
-  // Permission and access management.
-  const [accessList, setAccessList] = useState<Record<string, Permission>>({});
-  const [userPermission, setUserPermission] = useState<Permission>('none');
-  
-  // Initialize the Tiptap editor with collaboration.
+
+  // -------------------------------
+  // Editor setup (Tiptap)
+  // -------------------------------
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -52,8 +79,9 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     autofocus: true,
   });
 
+  // -------------------------------
   // Presence tracking via Yjs awareness.
-  const [currentUsers, setCurrentUsers] = useState<string[]>([]);
+  // -------------------------------
   useEffect(() => {
     provider.awareness.setLocalStateField('user', {
       email: auth.currentUser?.email,
@@ -69,15 +97,20 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     return () => provider.awareness.off('change', onAwarenessChange);
   }, [provider.awareness]);
 
-  // Live content state from the Yjs document.
-  const [content, setContent] = useState<string>(ydoc.getText('prosemirror').toString());
+  // -------------------------------
+  // Load content from Yjs.
+  // -------------------------------
   useEffect(() => {
+    const initialContent = ydoc.getText('prosemirror').toString();
+    setContent(initialContent);
     const updateContent = () => setContent(ydoc.getText('prosemirror').toString());
     ydoc.getText('prosemirror').observe(updateContent);
     return () => ydoc.getText('prosemirror').unobserve(updateContent);
   }, [ydoc]);
 
+  // -------------------------------
   // Load document content from Supabase.
+  // -------------------------------
   useEffect(() => {
     async function loadDocument() {
       if (!docId || typeof docId !== 'string') return;
@@ -94,7 +127,9 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadDocument();
   }, [docId, ydoc]);
 
-  // Permission management: load permissions from Firestore.
+  // -------------------------------
+  // Permission management from Firestore.
+  // -------------------------------
   const loadAccessList = useCallback(async () => {
     if (!docId || typeof docId !== 'string') return;
     const docRef = doc(db, 'documentAccess', docId);
@@ -117,12 +152,15 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadAccessList();
   }, [docId, loadAccessList]);
 
-  // Determine if we can render the editor.
+  // -------------------------------
+  // Determine render & edit permissions.
+  // -------------------------------
   const canRenderEditor = userPermission !== 'none';
-  // Determine if the editor should be editable.
   const isEditable = userPermission === 'edit' || userPermission === 'own';
 
+  // -------------------------------
   // Auto-save debounce.
+  // -------------------------------
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const saveDocument = useCallback(async (newContent: string) => {
     if (!docId || typeof docId !== 'string') return;
@@ -142,33 +180,39 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     debounceRef.current = setTimeout(() => saveDocument(newContent), 3000);
   }, [saveDocument]);
 
-  // Handle editor changes (if using a textarea fallback, you can modify this as needed).
-  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    const yText = ydoc.getText('prosemirror');
-    yText.delete(0, yText.length);
-    yText.insert(0, newValue);
-    debouncedSave(newValue);
-  }, [ydoc, debouncedSave]);
-
+  // -------------------------------
   // Sharing controls.
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [shareEmail, setShareEmail] = useState('');
+  // -------------------------------
   const handleShare = async () => {
     if (!docId || typeof docId !== 'string' || !shareEmail) return;
     const docRef = doc(db, 'documentAccess', docId);
-    // When sharing, default permission is "view".
-    await updateDoc(docRef, { [`users.${shareEmail}`]: 'view' });
+    if (sharePermission === 'own') {
+      if (transferDocName.trim() === '' || transferConfirm.toLowerCase() !== 'yes') {
+        alert('Please enter the document name and type "yes" to confirm ownership transfer.');
+        return;
+      }
+      await updateDoc(docRef, {
+        [`users.${shareEmail}`]: 'own',
+        [`users.${auth.currentUser?.email}`]: 'edit',
+      });
+    } else {
+      await updateDoc(docRef, { [`users.${shareEmail}`]: sharePermission });
+    }
     setShareDialogOpen(false);
     setShareEmail('');
+    setSharePermission('view');
+    setTransferDocName('');
+    setTransferConfirm('');
     loadAccessList();
   };
+
   const handlePermissionChange = async (email: string, newPermission: Permission) => {
     if (!docId || typeof docId !== 'string') return;
     const docRef = doc(db, 'documentAccess', docId);
     await updateDoc(docRef, { [`users.${email}`]: newPermission });
     loadAccessList();
   };
+
   const removeAccess = async (email: string) => {
     if (!docId || typeof docId !== 'string') return;
     const docRef = doc(db, 'documentAccess', docId);
@@ -176,6 +220,9 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadAccessList();
   };
 
+  // -------------------------------
+  // Render the editor (combined editing and live preview)
+  // -------------------------------
   if (!canRenderEditor) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -189,6 +236,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
   return (
     <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#282a36', color: '#f8f8f2', minHeight: '100vh' }}>
       <Typography variant="h3" gutterBottom>Document Editor</Typography>
+      
       {/* Share & Presence Bar */}
       <Box sx={{ mb: 2 }}>
         <Button variant="outlined" onClick={() => setShareDialogOpen(true)} sx={{ mr: 2 }}>
@@ -218,15 +266,46 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
       )}
 
       {/* Share Dialog */}
-      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)}>
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Share Document</DialogTitle>
         <DialogContent>
-          <TextField
-            label="User Email"
-            fullWidth
-            value={shareEmail}
-            onChange={(e) => setShareEmail(e.target.value)}
-          />
+          <Stack spacing={2} mt={1}>
+            <TextField
+              label="User Email"
+              fullWidth
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="share-permission-label">Permission</InputLabel>
+              <Select
+                labelId="share-permission-label"
+                value={sharePermission}
+                label="Permission"
+                onChange={(e) => setSharePermission(e.target.value as Permission)}
+              >
+                <MenuItem value="view">View</MenuItem>
+                <MenuItem value="edit">Edit</MenuItem>
+                <MenuItem value="own">Transfer Ownership</MenuItem>
+              </Select>
+            </FormControl>
+            {sharePermission === 'own' && (
+              <>
+                <TextField
+                  label="Enter Document Name to Confirm Transfer"
+                  fullWidth
+                  value={transferDocName}
+                  onChange={(e) => setTransferDocName(e.target.value)}
+                />
+                <TextField
+                  label='Type "yes" to confirm'
+                  fullWidth
+                  value={transferConfirm}
+                  onChange={(e) => setTransferConfirm(e.target.value)}
+                />
+              </>
+            )}
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShareDialogOpen(false)}>Cancel</Button>
@@ -234,7 +313,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
         </DialogActions>
       </Dialog>
 
-      {/* If owner, allow changing permissions for each shared user */}
+      {/* Owner Permission Management */}
       {userPermission === 'own' && (
         <Box sx={{ mt: 4 }}>
           <Typography variant="h6">Manage Permissions</Typography>
@@ -244,7 +323,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
                 <Typography variant="body2" sx={{ mr: 1 }}>
                   {email}:
                 </Typography>
-                <FormControl size="small">
+                <FormControl size="small" sx={{ minWidth: 120 }}>
                   <InputLabel id={`perm-label-${email}`}>Permission</InputLabel>
                   <Select
                     labelId={`perm-label-${email}`}
