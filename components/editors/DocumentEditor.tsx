@@ -1,5 +1,5 @@
 // components/editors/DocumentEditor.tsx
-import { FC, useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { FC, useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -7,28 +7,35 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { supabase } from '../../config/supabaseClient';
-import { Container, Box, Typography, Button, Grid } from '@mui/material';
-import { auth } from '../../config/firebaseClient';
+import { Container, Box, Typography, Button, Grid, FormControl, InputLabel, Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
+import { auth, db } from '../../config/firebaseClient';
+import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
+import MarkdownRenderer from '../../components/markdown/MarkdownRenderer';
+
+export type Permission = 'none' | 'view' | 'edit' | 'own';
 
 interface DocumentEditorProps {
   docId: string | string[] | undefined;
 }
 
 const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
-  // Memoize the Yjs document so it's not recreated on every render.
+  // Create a Yjs document once.
   const ydoc = useMemo(() => new Y.Doc(), []);
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:1234';
   const provider = useMemo(
     () => new WebsocketProvider(wsUrl, typeof docId === 'string' ? docId : 'default-room', ydoc),
     [wsUrl, docId, ydoc]
   );
-
-  const [userColor] = useState<string>(
-    '#' + Math.floor(Math.random() * 16777215).toString(16)
-  );
+  const [userColor] = useState<string>('#' + Math.floor(Math.random() * 16777215).toString(16));
+  
+  // Save status is defined only once.
   const [saveStatus, setSaveStatus] = useState<string>('');
-  const [showPreview, setShowPreview] = useState<boolean>(false);
-
+  
+  // Permission and access management.
+  const [accessList, setAccessList] = useState<Record<string, Permission>>({});
+  const [userPermission, setUserPermission] = useState<Permission>('none');
+  
+  // Initialize the Tiptap editor with collaboration.
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -42,8 +49,33 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
       }),
     ],
     content: '',
-    autofocus: true, // Note: using lowercase "autofocus"
+    autofocus: true,
   });
+
+  // Presence tracking via Yjs awareness.
+  const [currentUsers, setCurrentUsers] = useState<string[]>([]);
+  useEffect(() => {
+    provider.awareness.setLocalStateField('user', {
+      email: auth.currentUser?.email,
+      name: auth.currentUser?.displayName || auth.currentUser?.email,
+    });
+    const onAwarenessChange = () => {
+      const states = Array.from(provider.awareness.getStates().values());
+      const emails = states.map((s: any) => s.user?.email);
+      const uniqueEmails = Array.from(new Set(emails)).filter((email): email is string => !!email);
+      setCurrentUsers(uniqueEmails);
+    };
+    provider.awareness.on('change', onAwarenessChange);
+    return () => provider.awareness.off('change', onAwarenessChange);
+  }, [provider.awareness]);
+
+  // Live content state from the Yjs document.
+  const [content, setContent] = useState<string>(ydoc.getText('prosemirror').toString());
+  useEffect(() => {
+    const updateContent = () => setContent(ydoc.getText('prosemirror').toString());
+    ydoc.getText('prosemirror').observe(updateContent);
+    return () => ydoc.getText('prosemirror').unobserve(updateContent);
+  }, [ydoc]);
 
   // Load document content from Supabase.
   useEffect(() => {
@@ -62,16 +94,38 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadDocument();
   }, [docId, ydoc]);
 
-  useEffect(() => {
-    if (editor) {
-      editor.commands.focus();
+  // Permission management: load permissions from Firestore.
+  const loadAccessList = useCallback(async () => {
+    if (!docId || typeof docId !== 'string') return;
+    const docRef = doc(db, 'documentAccess', docId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const users = data.users as Record<string, Permission> | undefined;
+      if (users) {
+        setAccessList(users);
+        const perm = users[auth.currentUser?.email || ''] || 'none';
+        setUserPermission(perm);
+      }
+    } else {
+      await setDoc(doc(db, 'documentAccess', docId), { users: { [auth.currentUser?.email!]: 'own' } });
+      setAccessList({ [auth.currentUser?.email!]: 'own' });
+      setUserPermission('own');
     }
-  }, [editor]);
+  }, [docId]);
+  useEffect(() => {
+    loadAccessList();
+  }, [docId, loadAccessList]);
 
+  // Determine if we can render the editor.
+  const canRenderEditor = userPermission !== 'none';
+  // Determine if the editor should be editable.
+  const isEditable = userPermission === 'edit' || userPermission === 'own';
+
+  // Auto-save debounce.
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
-  const saveDocument = useCallback(async () => {
-    if (!editor || !docId || typeof docId !== 'string') return;
-    const newContent = editor.getHTML();
+  const saveDocument = useCallback(async (newContent: string) => {
+    if (!docId || typeof docId !== 'string') return;
     const { error } = await supabase
       .from('documents')
       .upsert({ id: docId, content: newContent }, { onConflict: 'id' });
@@ -82,57 +136,136 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
       setSaveStatus('Document saved!');
       setTimeout(() => setSaveStatus(''), 2000);
     }
-  }, [editor, docId]);
-
-  const debouncedSave = useCallback(() => {
+  }, [docId]);
+  const debouncedSave = useCallback((newContent: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => saveDocument(), 3000);
+    debounceRef.current = setTimeout(() => saveDocument(newContent), 3000);
   }, [saveDocument]);
 
-  useEffect(() => {
-    if (!editor) return;
-    editor.on('update', debouncedSave);
-    return () => {
-      editor.off('update', debouncedSave);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [editor, debouncedSave]);
+  // Handle editor changes (if using a textarea fallback, you can modify this as needed).
+  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    const yText = ydoc.getText('prosemirror');
+    yText.delete(0, yText.length);
+    yText.insert(0, newValue);
+    debouncedSave(newValue);
+  }, [ydoc, debouncedSave]);
+
+  // Sharing controls.
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const handleShare = async () => {
+    if (!docId || typeof docId !== 'string' || !shareEmail) return;
+    const docRef = doc(db, 'documentAccess', docId);
+    // When sharing, default permission is "view".
+    await updateDoc(docRef, { [`users.${shareEmail}`]: 'view' });
+    setShareDialogOpen(false);
+    setShareEmail('');
+    loadAccessList();
+  };
+  const handlePermissionChange = async (email: string, newPermission: Permission) => {
+    if (!docId || typeof docId !== 'string') return;
+    const docRef = doc(db, 'documentAccess', docId);
+    await updateDoc(docRef, { [`users.${email}`]: newPermission });
+    loadAccessList();
+  };
+  const removeAccess = async (email: string) => {
+    if (!docId || typeof docId !== 'string') return;
+    const docRef = doc(db, 'documentAccess', docId);
+    await updateDoc(docRef, { [`users.${email}`]: deleteField() });
+    loadAccessList();
+  };
+
+  if (!canRenderEditor) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Typography variant="h4" color="error">
+          You do not have permission to view this document.
+        </Typography>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="lg" sx={{ py: 4, backgroundColor: '#282a36', color: '#f8f8f2', minHeight: '100vh' }}>
-      <Grid container spacing={4}>
-        <Grid item xs={12}>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h4">Calpiko Editor</Typography>
-            <Box>
-              <Button variant="contained" color="primary" onClick={() => setShowPreview(!showPreview)} sx={{ mr: 2 }}>
-                {showPreview ? 'Hide Preview' : 'Show Preview'}
-              </Button>
-              <Button variant="contained" color="success" onClick={saveDocument}>
-                Save Now
-              </Button>
-            </Box>
-          </Box>
-          {saveStatus && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {saveStatus}
-            </Typography>
+      <Typography variant="h3" gutterBottom>Document Editor</Typography>
+      {/* Share & Presence Bar */}
+      <Box sx={{ mb: 2 }}>
+        <Button variant="outlined" onClick={() => setShareDialogOpen(true)} sx={{ mr: 2 }}>
+          Share Document
+        </Button>
+        <Box>
+          <Typography variant="body2">
+            Shared with:{" "}
+            {Object.entries(accessList)
+              .map(([email, perm]) => `${email} (${perm})`)
+              .join(', ')}
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Currently editing: {currentUsers.join(', ')}
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Combined Editor & Live Preview */}
+      <Box sx={{ border: '1px solid #6272a4', borderRadius: 1, overflow: 'hidden' }}>
+        <EditorContent editor={editor} />
+      </Box>
+      {saveStatus && (
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          {saveStatus}
+        </Typography>
+      )}
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)}>
+        <DialogTitle>Share Document</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="User Email"
+            fullWidth
+            value={shareEmail}
+            onChange={(e) => setShareEmail(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleShare}>Share</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* If owner, allow changing permissions for each shared user */}
+      {userPermission === 'own' && (
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6">Manage Permissions</Typography>
+          {Object.entries(accessList).map(([email, perm]) =>
+            email !== auth.currentUser?.email ? (
+              <Box key={email} sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                <Typography variant="body2" sx={{ mr: 1 }}>
+                  {email}:
+                </Typography>
+                <FormControl size="small">
+                  <InputLabel id={`perm-label-${email}`}>Permission</InputLabel>
+                  <Select
+                    labelId={`perm-label-${email}`}
+                    value={perm}
+                    label="Permission"
+                    onChange={(e) => handlePermissionChange(email, e.target.value as Permission)}
+                  >
+                    <MenuItem value="view">View</MenuItem>
+                    <MenuItem value="edit">Edit</MenuItem>
+                    <MenuItem value="own">Own</MenuItem>
+                    <MenuItem value="none">None</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button variant="text" color="error" onClick={() => removeAccess(email)} sx={{ ml: 1 }}>
+                  Remove
+                </Button>
+              </Box>
+            ) : null
           )}
-        </Grid>
-        <Grid item xs={12}>
-          <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1, minHeight: 400 }}>
-            <EditorContent editor={editor} />
-          </Box>
-        </Grid>
-        {showPreview && (
-          <Grid item xs={12}>
-            <Typography variant="h5" gutterBottom>Preview</Typography>
-            <Box sx={{ border: '1px solid #6272a4', backgroundColor: '#44475a', p: 2, borderRadius: 1 }}>
-              <div dangerouslySetInnerHTML={{ __html: editor ? editor.getHTML() : '' }} />
-            </Box>
-          </Grid>
-        )}
-      </Grid>
+        </Box>
+      )}
     </Container>
   );
 };
