@@ -33,7 +33,7 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
   const yText = ydoc.getText('content');
 
   // Presence tracking via Yjs awareness.
-  const [currentUsers, setCurrentUsers] = useState<any[]>([]);
+  const [currentUsers, setCurrentUsers] = useState<string[]>([]);
   useEffect(() => {
     provider.awareness.setLocalStateField('user', {
       email: auth.currentUser?.email,
@@ -41,7 +41,9 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
     });
     const onAwarenessChange = () => {
       const states = Array.from(provider.awareness.getStates().values()).map((state: any) => state.user);
-      setCurrentUsers(states);
+      // Filter out duplicates and falsy values.
+      const uniqueEmails = Array.from(new Set(states.map(user => user?.email))).filter(email => email);
+      setCurrentUsers(uniqueEmails);
     };
     provider.awareness.on('change', onAwarenessChange);
     return () => provider.awareness.off('change', onAwarenessChange);
@@ -53,8 +55,8 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
   // Throttled markdown rendering.
   const [displayContent, setDisplayContent] = useState(content);
   const [lastRenderTime, setLastRenderTime] = useState(Date.now());
-  const renderThreshold = 100;
-  const renderInterval = 30000;
+  const renderThreshold = 100; // characters threshold
+  const renderInterval = 30000; // 30 seconds
 
   useEffect(() => {
     const now = Date.now();
@@ -81,7 +83,9 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
         .maybeSingle();
       if (error) console.error('Error loading document:', error);
       const initialContent = data?.content || '# Welcome\n\nStart editing...';
-      if (yText.length === 0) yText.insert(0, initialContent);
+      if (yText.length === 0) {
+        yText.insert(0, initialContent);
+      }
     }
     loadDocument();
   }, [docId, yText]);
@@ -161,7 +165,7 @@ const DocumentEditorPlain: FC<DocumentEditorPlainProps> = ({ docId }) => {
           Shared with: {accessList.join(', ')}
         </Typography>
         <Typography variant="body2" sx={{ display: 'inline-block' }}>
-          Currently editing: {currentUsers.map((u) => u?.email).join(', ')}
+          Currently editing: {currentUsers.join(', ')}
         </Typography>
       </Box>
 
