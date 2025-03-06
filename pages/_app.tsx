@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 import { auth } from '../config/firebaseClient';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Container, Typography, Button } from '@mui/material';
+import { User } from 'firebase/auth';
 
 function MyApp({ Component, pageProps }: AppProps) {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

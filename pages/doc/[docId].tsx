@@ -2,7 +2,7 @@
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 
-// Use explicit file extension (.tsx) in the import path.
+// Dynamically import DocumentEditorPlain (disable SSR).
 const DocumentEditorPlain = dynamic(() => import('../../components/editors/DocumentEditorPlain.tsx'), {
   ssr: false,
 });
