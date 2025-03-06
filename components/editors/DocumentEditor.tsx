@@ -1,5 +1,5 @@
 // components/editors/DocumentEditor.tsx
-import { FC, useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from 'react';
+import { FC, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -25,7 +25,6 @@ import {
 } from '@mui/material';
 import { auth, db } from '../../config/firebaseClient';
 import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
-import MarkdownRenderer from '../../components/markdown/MarkdownRenderer';
 
 export type Permission = 'none' | 'view' | 'edit' | 'own';
 
@@ -51,7 +50,6 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
   const [transferDocName, setTransferDocName] = useState('');
   const [transferConfirm, setTransferConfirm] = useState('');
   const [currentUsers, setCurrentUsers] = useState<string[]>([]);
-  const [content, setContent] = useState<string>('');
 
   // ----- Yjs & WebSocket setup -----
   const ydoc = useMemo(() => new Y.Doc(), []);
@@ -78,8 +76,8 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     content: '',
     autofocus: true,
   });
-  
-  // Set editor editable state based on permission (if "view", make read-only)
+
+  // Set editor editable state based on permission ("view" makes it read-only)
   useEffect(() => {
     if (editor) {
       editor.setEditable(userPermission !== 'view');
@@ -102,16 +100,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     return () => provider.awareness.off('change', onAwarenessChange);
   }, [provider.awareness]);
 
-  // ----- Load content from Yjs -----
-  useEffect(() => {
-    const initialContent = ydoc.getText('prosemirror').toString();
-    setContent(initialContent);
-    const updateContent = () => setContent(ydoc.getText('prosemirror').toString());
-    ydoc.getText('prosemirror').observe(updateContent);
-    return () => ydoc.getText('prosemirror').unobserve(updateContent);
-  }, [ydoc]);
-
-  // ----- Load document from Supabase -----
+  // ----- Load document content from Supabase -----
   useEffect(() => {
     async function loadDocument() {
       if (!docId || typeof docId !== 'string') return;
