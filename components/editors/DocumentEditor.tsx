@@ -1,5 +1,5 @@
 // components/editors/DocumentEditor.tsx
-import { FC, useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from 'react';
+import { FC, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -12,7 +12,6 @@ import {
   Box,
   Typography,
   Button,
-  Grid,
   FormControl,
   InputLabel,
   Select,
@@ -26,7 +25,6 @@ import {
 } from '@mui/material';
 import { auth, db } from '../../config/firebaseClient';
 import { doc, getDoc, setDoc, updateDoc, deleteField } from 'firebase/firestore';
-import MarkdownRenderer from '../../components/markdown/MarkdownRenderer';
 
 export type Permission = 'none' | 'view' | 'edit' | 'own';
 
@@ -34,10 +32,15 @@ interface DocumentEditorProps {
   docId: string | string[] | undefined;
 }
 
+interface AwarenessState {
+  user?: {
+    email?: string;
+    name?: string;
+  };
+}
+
 const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
-  // -------------------------------
-  // State declarations
-  // -------------------------------
+  // ----- State declarations -----
   const [saveStatus, setSaveStatus] = useState<string>('');
   const [accessList, setAccessList] = useState<Record<string, Permission>>({});
   const [userPermission, setUserPermission] = useState<Permission>('none');
@@ -47,11 +50,8 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
   const [transferDocName, setTransferDocName] = useState('');
   const [transferConfirm, setTransferConfirm] = useState('');
   const [currentUsers, setCurrentUsers] = useState<string[]>([]);
-  const [content, setContent] = useState<string>('');
 
-  // -------------------------------
-  // Yjs & WebSocket setup
-  // -------------------------------
+  // ----- Yjs & WebSocket setup -----
   const ydoc = useMemo(() => new Y.Doc(), []);
   const wsUrl = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'ws://localhost:1234';
   const provider = useMemo(
@@ -60,9 +60,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
   );
   const [userColor] = useState<string>('#' + Math.floor(Math.random() * 16777215).toString(16));
 
-  // -------------------------------
-  // Editor setup (Tiptap)
-  // -------------------------------
+  // ----- Editor setup (Tiptap) -----
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -79,17 +77,15 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     autofocus: true,
   });
 
-  // -------------------------------
-  // Presence tracking via Yjs awareness.
-  // -------------------------------
+  // ----- Presence tracking via Yjs awareness -----
   useEffect(() => {
     provider.awareness.setLocalStateField('user', {
       email: auth.currentUser?.email,
       name: auth.currentUser?.displayName || auth.currentUser?.email,
     });
     const onAwarenessChange = () => {
-      const states = Array.from(provider.awareness.getStates().values());
-      const emails = states.map((s: any) => s.user?.email);
+      const states = Array.from(provider.awareness.getStates().values()) as AwarenessState[];
+      const emails = states.map((s) => s.user?.email);
       const uniqueEmails = Array.from(new Set(emails)).filter((email): email is string => !!email);
       setCurrentUsers(uniqueEmails);
     };
@@ -97,20 +93,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     return () => provider.awareness.off('change', onAwarenessChange);
   }, [provider.awareness]);
 
-  // -------------------------------
-  // Load content from Yjs.
-  // -------------------------------
-  useEffect(() => {
-    const initialContent = ydoc.getText('prosemirror').toString();
-    setContent(initialContent);
-    const updateContent = () => setContent(ydoc.getText('prosemirror').toString());
-    ydoc.getText('prosemirror').observe(updateContent);
-    return () => ydoc.getText('prosemirror').unobserve(updateContent);
-  }, [ydoc]);
-
-  // -------------------------------
-  // Load document content from Supabase.
-  // -------------------------------
+  // ----- Load document from Supabase -----
   useEffect(() => {
     async function loadDocument() {
       if (!docId || typeof docId !== 'string') return;
@@ -127,9 +110,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadDocument();
   }, [docId, ydoc]);
 
-  // -------------------------------
-  // Permission management from Firestore.
-  // -------------------------------
+  // ----- Permission management from Firestore -----
   const loadAccessList = useCallback(async () => {
     if (!docId || typeof docId !== 'string') return;
     const docRef = doc(db, 'documentAccess', docId);
@@ -143,8 +124,9 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
         setUserPermission(perm);
       }
     } else {
-      await setDoc(doc(db, 'documentAccess', docId), { users: { [auth.currentUser?.email!]: 'own' } });
-      setAccessList({ [auth.currentUser?.email!]: 'own' });
+      if (!auth.currentUser?.email) return;
+      await setDoc(doc(db, 'documentAccess', docId), { users: { [auth.currentUser.email]: 'own' } });
+      setAccessList({ [auth.currentUser.email]: 'own' });
       setUserPermission('own');
     }
   }, [docId]);
@@ -152,15 +134,11 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadAccessList();
   }, [docId, loadAccessList]);
 
-  // -------------------------------
-  // Determine render & edit permissions.
-  // -------------------------------
+  // ----- Determine render & edit permissions -----
   const canRenderEditor = userPermission !== 'none';
   const isEditable = userPermission === 'edit' || userPermission === 'own';
 
-  // -------------------------------
-  // Auto-save debounce.
-  // -------------------------------
+  // ----- Auto-save via editor onUpdate -----
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const saveDocument = useCallback(async (newContent: string) => {
     if (!docId || typeof docId !== 'string') return;
@@ -179,10 +157,17 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => saveDocument(newContent), 3000);
   }, [saveDocument]);
+  useEffect(() => {
+    if (!editor) return;
+    const onUpdate = () => {
+      const newContent = editor.getHTML();
+      debouncedSave(newContent);
+    };
+    editor.on('update', onUpdate);
+    return () => editor.off('update', onUpdate);
+  }, [editor, debouncedSave]);
 
-  // -------------------------------
-  // Sharing controls.
-  // -------------------------------
+  // ----- Sharing controls -----
   const handleShare = async () => {
     if (!docId || typeof docId !== 'string' || !shareEmail) return;
     const docRef = doc(db, 'documentAccess', docId);
@@ -220,9 +205,6 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
     loadAccessList();
   };
 
-  // -------------------------------
-  // Render the editor (combined editing and live preview)
-  // -------------------------------
   if (!canRenderEditor) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -254,8 +236,8 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
           </Typography>
         </Box>
       </Box>
-
-      {/* Combined Editor & Live Preview */}
+      
+      {/* Combined Editor & Live Preview (Tiptap handles rendering live) */}
       <Box sx={{ border: '1px solid #6272a4', borderRadius: 1, overflow: 'hidden' }}>
         <EditorContent editor={editor} />
       </Box>
@@ -264,7 +246,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
           {saveStatus}
         </Typography>
       )}
-
+      
       {/* Share Dialog */}
       <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Share Document</DialogTitle>
@@ -312,7 +294,7 @@ const DocumentEditor: FC<DocumentEditorProps> = ({ docId }) => {
           <Button onClick={handleShare}>Share</Button>
         </DialogActions>
       </Dialog>
-
+      
       {/* Owner Permission Management */}
       {userPermission === 'own' && (
         <Box sx={{ mt: 4 }}>
