@@ -11,8 +11,11 @@ interface MarkdownRendererProps {
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   return (
-    <div>
-      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+    <div className="katex-wrapper">
+      <ReactMarkdown 
+        remarkPlugins={[remarkMath]} 
+        rehypePlugins={[rehypeKatex]}
+      >
         {content}
       </ReactMarkdown>
     </div>

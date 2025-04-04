@@ -1,3 +1,54 @@
 /* styles/globals.css */
 /* Add global CSS resets or custom styles here.
    MUI's CssBaseline (used in _app.tsx) will handle many resets. */
+/* styles/globals.css */
+/* Add global CSS resets or custom styles here.
+   MUI's CssBaseline (used in _app.tsx) will handle many resets. */
+
+/* Fix for KaTeX rendering */
+.katex-wrapper {
+   color: #f8f8f2;
+ }
+ 
+ /* Override KaTeX default text color to match dark theme */
+ .katex {
+   color: #f8f8f2 !important;
+ }
+ 
+ .katex .mord, .katex .msupsub {
+   color: #f8f8f2 !important;
+ }
+ 
+ /* Style for math blocks */
+ .math-display {
+   overflow-x: auto;
+   padding: 1rem 0;
+ }
+ 
+ /* Fix for code blocks and other elements */
+ code {
+   background-color: #44475a;
+   padding: 0.2em 0.4em;
+   border-radius: 3px;
+ }
+ 
+ pre {
+   background-color: #44475a;
+   padding: 1rem;
+   border-radius: 3px;
+   overflow-x: auto;
+ }
+ 
+ /* Match theme colors for the editor */
+ .ProseMirror {
+   color: #f8f8f2 !important;
+   background-color: #44475a !important;
+   padding: 1rem !important;
+   min-height: 300px !important;
+   outline: none !important;
+ }
+ 
+ /* Styling for links */
+ a {
+   color: #8be9fd !important;
+ }
